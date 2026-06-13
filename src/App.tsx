@@ -7,7 +7,8 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   SAMPLE_OSHINAKI, 
   getTemplateDefaults, 
-  PLACEHOLDER_IMAGES 
+  PLACEHOLDER_IMAGES,
+  convertOklchInCss
 } from './sampleData';
 import { OshinakiData, DistributionItem, TemplateId, FontFamilyId, AspectRatioId } from './types';
 import OshinakiCanvas from './components/OshinakiCanvas';
@@ -111,7 +112,7 @@ export default function App() {
           parsed.noveltyImage1 = PLACEHOLDER_IMAGES.noveltyMystery;
           parsed.noveltyImage2 = '';
         }
-        if (!parsed.eventCode) parsed.eventCode = 'C104';
+        if (!parsed.eventCode) parsed.eventCode = 'C100';
         if (parsed.headerImage === undefined) parsed.headerImage = '';
         if (parsed.headerImageMode === undefined) parsed.headerImageMode = 'none';
         if (parsed.headerImageMirror === undefined) parsed.headerImageMirror = false;
@@ -195,7 +196,7 @@ export default function App() {
   const handleAddItem = () => {
     const newItem: DistributionItem = {
       id: Date.now().toString(),
-      title: '',
+      title: 'Title',
       price: '',
       badge: '新刊',
       description: '',
@@ -350,6 +351,36 @@ export default function App() {
 
     setTimeout(async () => {
       try {
+        // Pre-fetch and process same-origin stylesheets to convert "oklch" colors.
+        // Doing this asynchronously before html2canvas prevents SecurityErrors and crashes in sandbox iframes.
+        const transformedStyles: string[] = [];
+
+        try {
+          const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]')) as HTMLLinkElement[];
+          for (const link of links) {
+            try {
+              const url = new URL(link.href, window.location.origin);
+              if (url.origin === window.location.origin) {
+                const response = await fetch(link.href);
+                if (response.ok) {
+                  const cssText = await response.text();
+                  transformedStyles.push(cssText.toLowerCase().includes('oklch(') ? convertOklchInCss(cssText) : cssText);
+                }
+              }
+            } catch (linkFetchErr) {
+              console.warn('Could not pre-fetch stylesheet:', link.href, linkFetchErr);
+            }
+          }
+
+          const styleElements = Array.from(document.querySelectorAll('style')) as HTMLStyleElement[];
+          styleElements.forEach(styleEl => {
+            const cssText = styleEl.textContent || '';
+            transformedStyles.push(cssText.toLowerCase().includes('oklch(') ? convertOklchInCss(cssText) : cssText);
+          });
+        } catch (styleParseErr) {
+          console.warn('Style pre-parsing encountered an issue:', styleParseErr);
+        }
+
         // Wait for images to load fully in background
         const images = printRef.current?.querySelectorAll('img');
         if (images) {
@@ -391,6 +422,68 @@ export default function App() {
           x: 0,
           y: 0,
           onclone: (clonedDoc) => {
+            // 1. Remove linked stylesheets to prevent html2canvas from executing fetch-parsing crashes
+            const clonedLinks = Array.from(clonedDoc.querySelectorAll('link[rel="stylesheet"]'));
+            clonedLinks.forEach(link => {
+              if (link.parentNode) link.parentNode.removeChild(link);
+            });
+
+            // 2. Clear out any existing style tags to do a clean overwrite
+            const clonedStyles = Array.from(clonedDoc.querySelectorAll('style'));
+            clonedStyles.forEach(style => {
+              if (style.parentNode) style.parentNode.removeChild(style);
+            });
+
+            // 3. Inject our fully translated, oklch-free styles
+            if (transformedStyles.length > 0) {
+              const cleanedStyleTag = clonedDoc.createElement('style');
+              cleanedStyleTag.textContent = transformedStyles.join('\n');
+              clonedDoc.head.appendChild(cleanedStyleTag);
+            } else {
+              // Fallback if pre-fetching didn't catch rules, try synchronous conversion
+              try {
+                const sheets = Array.from(clonedDoc.styleSheets);
+                sheets.forEach((sheet) => {
+                  try {
+                    const cssRules = sheet.cssRules;
+                    if (!cssRules) return;
+                    let cssText = '';
+                    for (let i = 0; i < cssRules.length; i++) {
+                      cssText += cssRules[i].cssText + '\n';
+                    }
+                    if (cssText.toLowerCase().includes('oklch(')) {
+                      const convertedCss = convertOklchInCss(cssText);
+                      const fallbackStyle = clonedDoc.createElement('style');
+                      fallbackStyle.textContent = convertedCss;
+                      clonedDoc.head.appendChild(fallbackStyle);
+                      (sheet as CSSStyleSheet).disabled = true;
+                    }
+                  } catch (e) {
+                    // Suppress
+                  }
+                });
+              } catch (fallbackErr) {
+                console.warn('Fallback styledoc parse failed:', fallbackErr);
+              }
+            }
+
+            // 4. Sanitize elements inline style attributes containing oklch
+            try {
+              const allElements = clonedDoc.querySelectorAll('*');
+              allElements.forEach((el) => {
+                const htmlEl = el as HTMLElement;
+                if (htmlEl.style) {
+                  const styleAttr = htmlEl.getAttribute('style');
+                  if (styleAttr && styleAttr.toLowerCase().includes('oklch(')) {
+                    htmlEl.setAttribute('style', convertOklchInCss(styleAttr));
+                  }
+                }
+              });
+            } catch (elStyleErr) {
+              console.warn('Error sanitizing elements style attributes:', elStyleErr);
+            }
+
+            // Adjust position
             const clonedEl = clonedDoc.getElementById('oshinaki-print-area');
             if (clonedEl) {
               const parent = clonedEl.parentElement;
@@ -509,12 +602,12 @@ export default function App() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">イベント回 (例: C104)</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">イベント回 (例: C100)</label>
                 <input
                   type="text"
                   value={data.eventCode}
                   onChange={e => handleMetaChange('eventCode', e.target.value)}
-                  placeholder="C104 / コミティア150"
+                  placeholder="C100 / コミティア150"
                   id="input-event-code"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 transition"
                 />
@@ -549,7 +642,7 @@ export default function App() {
                   type="text"
                   value={data.circleSpace}
                   onChange={e => handleMetaChange('circleSpace', e.target.value)}
-                  placeholder="東V 02ab"
+                  placeholder="東1 01ab"
                   id="input-circle-space"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-orange-700 transition"
                 />
@@ -560,18 +653,18 @@ export default function App() {
                   type="text"
                   value={data.circleName}
                   onChange={e => handleMetaChange('circleName', e.target.value)}
-                  placeholder="JERRY POISON"
+                  placeholder="Circlename"
                   id="input-circle-name"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-800 transition"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">著者・主催名</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">サークル主名</label>
                 <input
                   type="text"
                   value={data.circleAuthor}
                   onChange={e => handleMetaChange('circleAuthor', e.target.value)}
-                  placeholder="NEKOME TOWORU & 006 (省略可)"
+                  placeholder="Name (省略可)"
                   id="input-circle-author"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm transition"
                 />

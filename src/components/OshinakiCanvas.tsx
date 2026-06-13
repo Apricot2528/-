@@ -7,36 +7,79 @@ import React, { useRef, useEffect, useState } from 'react';
 import { OshinakiData } from '../types';
 import { Heart, Star, Sparkles, AlertTriangle, BookOpen, Gift, ShoppingBag, Info } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { convertSvgToHtml2canvasFriendly } from '../sampleData';
+
+interface SafeImageProps {
+  src: string | undefined | null;
+  alt?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function SafeImage({ src, alt, className, style }: SafeImageProps) {
+  if (!src) return null;
+
+  // Check if it is an SVG data URI
+  if (src.startsWith('data:image/svg+xml')) {
+    let svgContent = '';
+    if (src.startsWith('data:image/svg+xml;utf8,')) {
+      const raw = src.substring('data:image/svg+xml;utf8,'.length);
+      try {
+        svgContent = decodeURIComponent(raw);
+      } catch {
+        svgContent = raw;
+      }
+    } else if (src.startsWith('data:image/svg+xml;base64,')) {
+      const raw = src.substring('data:image/svg+xml;base64,'.length);
+      try {
+        svgContent = atob(raw);
+      } catch {
+        // Fallback
+      }
+    } else if (src.startsWith('data:image/svg+xml,')) {
+      const raw = src.substring('data:image/svg+xml,'.length);
+      try {
+        svgContent = decodeURIComponent(raw);
+      } catch {
+        svgContent = raw;
+      }
+    }
+
+    if (svgContent) {
+      return (
+        <div 
+          className={`w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full [&>svg]:max-w-full [&>svg]:max-h-full ${className || ''}`}
+          dangerouslySetInnerHTML={{ __html: svgContent }}
+          style={style}
+        />
+      );
+    }
+  }
+
+  // Prevent canvas tainting in Chrome under same-origin restrictions inside an iframe.
+  // We only omit the crossorigin property for base64 data URIs and blob URLs.
+  const isDataOrBlob = src.startsWith('data:') || src.startsWith('blob:');
+  const crossOrigin = isDataOrBlob ? undefined : 'anonymous';
+
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      className={className} 
+      style={style} 
+      referrerPolicy="no-referrer" 
+      crossOrigin={crossOrigin} 
+    />
+  );
+}
 
 interface OshinakiCanvasProps {
   data: OshinakiData;
   printRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCanvasProps) {
+export default function OshinakiCanvas({ data, printRef }: OshinakiCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
-
-  const data = React.useMemo(() => {
-    const cloned = { ...inputData };
-    if (cloned.items) {
-      cloned.items = cloned.items.map(item => ({
-        ...item,
-        image: convertSvgToHtml2canvasFriendly(item.image)
-      }));
-    }
-    if (cloned.headerImage) {
-      cloned.headerImage = convertSvgToHtml2canvasFriendly(cloned.headerImage);
-    }
-    if (cloned.noveltyImage1) {
-      cloned.noveltyImage1 = convertSvgToHtml2canvasFriendly(cloned.noveltyImage1);
-    }
-    if (cloned.noveltyImage2) {
-      cloned.noveltyImage2 = convertSvgToHtml2canvasFriendly(cloned.noveltyImage2);
-    }
-    return cloned;
-  }, [inputData]);
 
   const targetWidth = data.aspectRatio === 'sns-horizontal' ? 1000 : 800;
   
@@ -372,11 +415,10 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
               className="w-full relative z-10 leading-none select-none overflow-hidden shrink-0 border-b border-slate-200/40"
               style={data.headerImageMirror ? { transform: 'scaleX(-1)' } : undefined}
             >
-              <img 
+              <SafeImage 
                 src={data.headerImage} 
                 alt="Custom Header Banner" 
                 className="w-full h-auto object-cover block"
-                referrerPolicy="no-referrer"
               />
             </div>
           ) : (
@@ -387,7 +429,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                   className="absolute inset-0 z-0 pointer-events-none select-none overflow-hidden"
                   style={data.headerImageMirror ? { transform: 'scaleX(-1)' } : undefined}
                 >
-                  <img 
+                  <SafeImage 
                     src={data.headerImage} 
                     alt="Header Background" 
                     className="w-full h-full object-cover"
@@ -395,7 +437,6 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                       filter: data.headerImageBlur !== undefined && data.headerImageBlur > 0 ? `blur(${data.headerImageBlur}px)` : undefined,
                       opacity: (data.headerImageOpacity !== undefined ? data.headerImageOpacity : 100) / 100,
                     }}
-                    referrerPolicy="no-referrer"
                   />
                   {/* Smart translucent overlay for maximum text readability adjusted to theme brightness */}
                   {(() => {
@@ -562,7 +603,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                         <div className="md:col-span-5 relative z-10 flex justify-center">
                           <div className="relative max-w-[280px] w-full aspect-[3/4] bg-slate-50 border border-slate-100 shadow-lg overflow-hidden transition-all hover:scale-102">
                             {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                              <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 pointer-events-none">
                                 <BookOpen className="w-16 h-16 opacity-40 mb-2" />
@@ -623,7 +664,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
 
                           <div className="w-[100px] h-[100px] shrink-0 bg-slate-50 border border-slate-105 shadow-xs overflow-hidden flex items-center justify-center">
                             {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                              <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover" />
                             ) : (
                               <Gift className="w-8 h-8 text-slate-300 opacity-40 pointer-events-none" />
                             )}
@@ -670,7 +711,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
 
                           <div className="w-[100px] h-[100px] shrink-0 bg-slate-50 border border-slate-105 shadow-xs overflow-hidden flex items-center justify-center">
                             {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                              <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover" />
                             ) : (
                               <BookOpen className="w-8 h-8 text-slate-300 opacity-40 pointer-events-none" />
                             )}
@@ -748,7 +789,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                           {/* Image box with drop shadow inside */}
                           <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shadow-inner">
                             {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none pointer-events-none" />
+                              <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none pointer-events-none" />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                                 <BookOpen className="w-10 h-10 opacity-60 mb-2" />
@@ -829,7 +870,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
 
                           <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shadow-inner">
                             {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
+                              <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                                 <BookOpen className="w-10 h-10 opacity-60 mb-2" />
@@ -875,7 +916,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
 
                         <div className="relative flex-none w-[130px] h-[90px] rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shadow-inner flex items-center justify-center">
                           {data.noveltyImage1 ? (
-                            <img src={data.noveltyImage1} alt="Novelty" className="w-full h-full object-contain p-1" />
+                            <SafeImage src={data.noveltyImage1} alt="Novelty" className="w-full h-full object-contain p-1" />
                           ) : (
                             <div className="text-3xl">🎁</div>
                           )}
@@ -925,7 +966,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                           {/* Image Box */}
                           <div className="relative aspect-[16/10] rounded-xl overflow-hidden bg-slate-50 border border-slate-100 shadow-inner">
                             {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none pointer-events-none" />
+                              <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none pointer-events-none" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-slate-300">
                                 <Gift className="w-8 h-8 opacity-65" />
@@ -1003,7 +1044,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                         {/* Foreground active card without border/frame */}
                         <div className="absolute inset-0 bg-neutral-100 overflow-hidden rounded-xs shadow-md">
                           {item.image ? (
-                            <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
+                            <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                               <BookOpen className="w-10 h-10 mb-1" />
@@ -1073,7 +1114,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                     <div className="absolute top-[2%] right-[4%] w-[42%] flex flex-col">
                       <div className="relative aspect-[3/4.2] bg-neutral-100 overflow-hidden w-full rounded-xs shadow-sm mb-3">
                         {item.image ? (
-                          <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
+                          <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                             <BookOpen className="w-12 h-12 mb-1" />
@@ -1141,7 +1182,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                     <div className="absolute top-[51%] right-[4%] w-[26%] flex flex-col z-10">
                       <div className="relative aspect-[1/2.2] bg-neutral-100 overflow-hidden w-full rounded-xs shadow-xs mb-2.5">
                         {item.image ? (
-                          <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
+                          <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                             <BookOpen className="w-6 h-6 mb-1" />
@@ -1203,7 +1244,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                         <div className="absolute inset-x-[-8px] inset-y-[4px] bg-neutral-200/50 rotate-[3deg] scale-95 border border-black/5 rounded-xs overflow-hidden" />
                         <div className="absolute inset-0 bg-neutral-100 overflow-hidden rounded-xs shadow-md">
                           {item.image ? (
-                            <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
+                            <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                               <BookOpen className="w-8 h-8 mb-1" />
@@ -1269,7 +1310,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                     <div className="absolute top-[51%] left-[45%] w-[20%] flex flex-col z-10">
                       <div className="relative aspect-[3/4.2] bg-neutral-100 overflow-hidden w-full rounded-xs shadow-xs mb-2 rotate-[1deg]">
                         {item.image ? (
-                          <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
+                          <SafeImage src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                             <BookOpen className="w-5 h-5 mb-1" />
@@ -1335,11 +1376,10 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                     >
                       <div className={style.cardImageWrapper} style={{ borderColor: style.cardImageBorder }}>
                         {item.image ? (
-                          <img
+                          <SafeImage
                             src={item.image}
                             alt={item.title}
                             className="w-full h-full object-cover select-none pointer-events-none"
-                            referrerPolicy="no-referrer"
                           />
                         ) : (
                           <div className="w-full h-full bg-slate-100 flex items-center justify-center opacity-70">
@@ -1451,7 +1491,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
               {/* Left footer: big grey event code and date */}
               <div className="flex items-center gap-4 text-left">
                 <span className="text-[52px] font-black text-slate-300 leading-none tracking-tight select-none font-sans">
-                  {data.eventCode || 'C104'}
+                  {data.eventCode || 'C100'}
                 </span>
                 <div className="flex flex-col text-left">
                   <span className="text-[10px] font-black tracking-widest text-[#a1a1aa] uppercase font-sans">
@@ -1482,7 +1522,7 @@ export default function OshinakiCanvas({ data: inputData, printRef }: OshinakiCa
                     SPACE ID
                   </span>
                   <span className="text-2xl font-black text-black tracking-tight leading-none mt-1 font-sans">
-                    {data.circleSpace || '東V 02ab'}
+                    {data.circleSpace || '東1 01ab'}
                   </span>
                 </div>
 

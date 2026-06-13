@@ -119,12 +119,12 @@ export const PLACEHOLDER_IMAGES = {
 };
 
 export const SAMPLE_OSHINAKI: OshinakiData = {
-  eventCode: 'C104',
+  eventCode: 'C100',
   eventTitle: 'コミックマーケット2日目',
   eventDate: '2024.08.12',
-  circleSpace: '東V 02ab',
-  circleName: 'JERRY POISON',
-  circleAuthor: 'NEKOME TOWORU & 006',
+  circleSpace: '東1 01ab',
+  circleName: 'Circlename',
+  circleAuthor: 'Name',
   footerNote: '★ 開場直後の混雑時は小銭へのご協力をお願いします。\n★ 会場限定特典（クリアしおり・ショッパー）は先着順となり、無くなり次第配布終了いたします。\n★ 本イベントにて頒布した作品は、すべてBOOTHにて自家オンライン通販を予定しております。',
   templateId: 'aqua_b',
   fontFamily: 'sans',
@@ -154,7 +154,7 @@ export const SAMPLE_OSHINAKI: OshinakiData = {
   items: [
     {
       id: '1',
-      title: 'JERRY POISON (006×猫目トヲル 合作イラスト本)',
+      title: 'Title',
       price: '1000',
       badge: 'new',
       description: '猫目トヲルと006による、澄んだ「水」と、きらめく「毒（ジェリー）」を連想する幻想世界の少女たちを凝縮した、至極の合同フルカラー画集。',
@@ -261,4 +261,96 @@ export const convertSvgToHtml2canvasFriendly = (imgUrl: string | undefined | nul
   }
   return imgUrl;
 };
+
+/**
+ * Converts OKLCH color space to sRGB color space.
+ * This is based on standard W3C Color Level 4 conversion algorithm.
+ */
+export function oklchToRgb(l: number, c: number, h: number): [number, number, number] {
+  // If Hue is NaN or undefined, default to 0
+  if (isNaN(h) || h === undefined) {
+    h = 0;
+  }
+  // Convert hue from degrees to radians
+  const hRad = (h * Math.PI) / 180;
+  const lab_a = c * Math.cos(hRad);
+  const lab_b = c * Math.sin(hRad);
+
+  // OKLAB to LMS
+  const l_ = l + 0.3963377774 * lab_a + 0.2158037573 * lab_b;
+  const m_ = l - 0.1055613458 * lab_a - 0.0638541728 * lab_b;
+  const s_ = l - 0.0894841775 * lab_a - 1.2914855480 * lab_b;
+
+  // LMS linear
+  const l_cube = l_ * l_ * l_;
+  const m_cube = m_ * m_ * m_;
+  const s_cube = s_ * s_ * s_;
+
+  // LMS to linear sRGB
+  const r_lin = +4.0767245293 * l_cube - 3.3072168827 * m_cube + 0.2307590544 * s_cube;
+  const g_lin = -1.2681437731 * l_cube + 2.6093323231 * m_cube - 0.3411344290 * s_cube;
+  const b_lin = -0.0041119885 * l_cube - 0.7034763098 * m_cube + 1.7068272510 * s_cube;
+
+  // Linear sRGB to standard sRGB (with gamma correction)
+  const gamma = (val: number) => {
+    if (isNaN(val)) return 0;
+    return val <= 0.0031308 ? 12.92 * val : 1.055 * Math.pow(val, 1.0 / 2.4) - 0.05;
+  };
+
+  const r = Math.max(0, Math.min(255, Math.round(gamma(r_lin) * 255)));
+  const g = Math.max(0, Math.min(255, Math.round(gamma(g_lin) * 255)));
+  const b = Math.max(0, Math.min(255, Math.round(gamma(b_lin) * 255)));
+
+  return [r, g, b];
+}
+
+/**
+ * Parses and replaces any CSS rule containing "oklch(...)" with standard "rgb(...)" or "rgba(...)" color codes.
+ * This prevents html2canvas parser crashes in environments loaded with Tailwind v4.
+ */
+export function convertOklchInCss(cssText: string): string {
+  // Matches "oklch(L C H)" or "oklch(L C H / alpha)"
+  // Supports percentages (like 96.8%), degrees (like 150deg or just 150), and various spacings
+  const regex = /oklch\(\s*([0-9.]+%?)\s+([0-9.%]+)\s+([0-9.]+(?:deg)?)(?:\s*\/\s*([0-9.]+%?))?\s*\)/gi;
+
+  return cssText.replace(regex, (match, lStr, cStr, hStr, aStr) => {
+    try {
+      // Parse Lightness
+      let l = parseFloat(lStr);
+      if (lStr.includes('%')) {
+        l = l / 100;
+      }
+
+      // Parse Chroma
+      let c = parseFloat(cStr);
+      if (cStr.includes('%')) {
+        c = c / 100;
+      }
+
+      // Parse Hue (ignores "deg" string suffix)
+      const h = parseFloat(hStr);
+
+      // Parse Alpha (optional)
+      let alpha = 1;
+      if (aStr) {
+        alpha = parseFloat(aStr);
+        if (aStr.includes('%')) {
+          alpha = alpha / 100;
+        }
+      }
+
+      // Convert OKLCH to standard RGB
+      const [r, g, b] = oklchToRgb(l, c, h);
+
+      if (alpha === 1) {
+        return `rgb(${r}, ${g}, ${b})`;
+      } else {
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+    } catch (e) {
+      console.warn('Failed to convert oklch color:', match, e);
+      return 'rgb(0, 0, 0)'; // Return black as safe fallback
+    }
+  });
+}
 
