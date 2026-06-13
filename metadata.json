@@ -1,0 +1,6 @@
+{
+  "name": "同人お品書きメーカー",
+  "description": "同人イベント用のお品書きを美しく作成・デザインし、高解像度のPNG画像として保存できるツールです。お好みのデザインテンプレートの着せ替え、自動保存、コンビニ印刷比率出力に対応しています。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
