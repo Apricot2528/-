@@ -181,12 +181,12 @@ export const SAMPLE_OSHINAKI: OshinakiData = {
     },
     {
       id: '4',
-      title: 'PANSY GIRL (猫目トヲル個人新刊イラスト集)',
+      title: 'Title',
       price: '1000',
-      badge: 'old',
-      description: '「パンジー」のように可憐で毒気のある少女たちの装飾・おめかしシーンを結集した、猫目トヲルの個人新刊イラストまとめ本。極小の残り部数となります。',
-      specs: 'A5 / 20P / フルカラーイラスト本 / 既刊',
-      image: PLACEHOLDER_IMAGES.aquaPansy,
+      badge: 'new',
+      description: '猫目トヲルと006による、澄んだ「水」と、きらめく「毒（ジェリー）」を連想する幻想世界の少女たちを凝縮した、至極の合同フルカラー画集。',
+      specs: 'B5 / 24P / フルカラー / 特殊クリア箔押し表紙',
+      image: PLACEHOLDER_IMAGES.aquaBook1,
     }
   ]
 };
